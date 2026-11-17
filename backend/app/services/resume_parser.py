@@ -372,6 +372,9 @@ class LlmResumeParser:
 
         # ---- evidence-preserving validation (plan §15) ----
         problems: list[str] = []
+        # offsets are recomputed for verbatim quotes (models miscount chars);
+        # a quote that isn't in the text still fails validate_spans below
+        parsed.evidence = validators.reanchor_spans(parsed.evidence, text)
         problems += validators.validate_spans(parsed.evidence, text)
         problems += validators.validate_skill_tokens(
             [s.name for s in parsed.skills], text

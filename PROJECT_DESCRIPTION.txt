@@ -1,0 +1,137 @@
+JobRec - AI-Powered Job Recommendation & Career Path Intelligence
+==================================================================
+
+OVERVIEW
+--------
+JobRec is a full-stack job recommendation platform that matches job seekers
+with relevant openings, explains why each job fits, shows the skill gaps they
+need to close, and plans a learning roadmap to get there. It also gives
+employers a hiring portal and gives administrators a console to monitor and
+moderate the whole marketplace.
+
+The core idea: ranking is done by a transparent, deterministic scoring engine
+backed by trained machine-learning models. An LLM is used only for language
+tasks (parsing resumes, writing explanations, understanding search queries).
+It never assigns scores, ranks jobs, or runs database queries, and every
+LLM output is validated, with a non-AI fallback if it fails.
+
+
+TECH STACK
+----------
+- Frontend : Next.js (App Router), React, TypeScript, Tailwind CSS
+- Backend  : FastAPI (Python), SQLAlchemy, Alembic migrations
+- Database : PostgreSQL with pgvector (vector similarity search)
+- ML       : sentence embeddings (MiniLM), skill2vec, LightGBM, isotonic
+             calibration, Bradley-Terry preference learning
+- LLM      : provider abstraction (OpenAI by default, Gemini, or any
+             OpenAI-compatible API)
+- Live jobs: Adzuna job search API
+- Runtime  : Docker Compose (Postgres, API, frontend, alerts worker)
+
+
+KEY FEATURES - JOB SEEKERS
+--------------------------
+- Resume upload and AI parsing, with one-click auto-fill of the profile form
+  (the user reviews every field before saving).
+- Adaptive onboarding questionnaire that learns what the user cares about
+  (salary, location, growth, etc.) from a few pairwise choices.
+- Personalised job feed ranked by an 8-part match score, with a plain-language
+  explanation of each match.
+- Skill gap analysis per job: matched skills, missing skills, and skills that
+  transfer from the user's experience.
+- Learning roadmap with resources to close the gaps, plus a "what-if"
+  simulator showing how the score changes if a skill is learned.
+- Career discovery for people switching fields.
+- Natural-language job search ("remote python jobs in Bangalore") combined
+  with full-text and semantic search.
+- Live job listings from Adzuna, country/city aware.
+- Resume optimiser and project-to-job mapping.
+- Application tracker (applied -> viewed -> shortlisted -> interview ->
+  offer -> hired), saved jobs, and feedback that personalises future results.
+- Job alerts: daily/weekly digests of new jobs similar to saved ones, with an
+  in-app notifications inbox and optional email.
+
+
+KEY FEATURES - EMPLOYERS
+------------------------
+- Company profile and job posting lifecycle (draft, publish, close, clone,
+  delete).
+- Applicant pipeline per posting with stage management.
+- Reverse talent match: find strong candidates for a posting.
+- Posting insights and performance analytics (stage conversion rates).
+- "What-if" relaxer showing how loosening requirements widens the talent pool.
+
+
+KEY FEATURES - ADMINISTRATORS (/admin)
+--------------------------------------
+- Live overview: total users, users online now, daily/weekly/monthly active
+  users, jobs, applications, hires, and system health.
+- User, job and employer management: search, activate/deactivate, change
+  roles, close jobs, verify companies.
+- Trust & safety: a moderation flag queue (jobs, companies, users) plus
+  automatic detection of suspicious job postings and employers.
+- Skill catalogue maintenance: merge duplicate skills safely.
+- Duplicate job detection using embeddings and title similarity.
+- LLM usage meter: calls, tokens, latency, estimated cost, kill switch.
+- Resume parse failures with retry.
+- Scoring weight editor (weights must add up to 1).
+- Model registry showing trained model versions and their metrics.
+
+
+HOW MATCHING WORKS
+------------------
+Every job gets a score from 0 to 100:
+
+  FinalScore = 0.30 x Semantic similarity
+             + 0.25 x Skill match
+             + 0.15 x Experience
+             + 0.10 x Education
+             + 0.05 x (Projects + Location + Salary + Career interest)
+
+- Weights are configurable by the admin and adapt per user (within safe
+  bounds) based on their onboarding answers and feedback.
+- A LightGBM learning-to-rank model re-orders the top results, and an
+  isotonic calibrator turns scores into "readiness" probabilities.
+- Results are diversified so the feed is not ten near-identical jobs.
+
+Trained models:
+  M0  MiniLM sentence embeddings (backbone)
+  M1  skill2vec - skill similarity and transferable-skill detection
+  M2  LightGBM ranker - re-ranks candidate jobs
+  M3  isotonic calibrator - score to probability
+  M4  preference learner - per-user weight personalisation
+  M5  onboarding elicitation - cold-start preferences from pairwise choices
+
+
+QUALITY & EVALUATION
+--------------------
+- About 250 backend tests (API contracts, scoring, ML, admin, alerts).
+- Evaluation harness reporting Precision@K, Recall@K, NDCG@K, MRR, F1 and
+  calibration error, compared against baselines.
+- Regression gates, e.g. ranker NDCG@10 must beat the deterministic baseline,
+  skill-extraction F1 >= 0.85, calibration ECE <= 0.10.
+
+
+RUNNING THE PROJECT
+-------------------
+  copy .env.example .env
+  docker compose up --build
+
+  App      : http://localhost:3000
+  API docs : http://localhost:8000/docs
+
+AI features need an LLM key in .env (OPENAI_API_KEY, or LLM_PROVIDER=gemini
+with GEMINI_API_KEY). Without one, the app still works using its non-AI
+fallbacks.
+
+
+PROJECT LAYOUT
+--------------
+  frontend/            Next.js app (seeker, employer and admin pages)
+  backend/app/api/     REST API endpoints (/api/v1)
+  backend/app/services Scoring, recommendation, gap analysis, roadmap, LLM layer
+  backend/app/models   Database models
+  backend/alembic/     Database migrations
+  backend/ml/          Model training and evaluation
+  backend/scripts/     Data pipeline, seeding and job-alert worker
+  docs/                Technical design and project status

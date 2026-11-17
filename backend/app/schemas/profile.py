@@ -51,6 +51,8 @@ class ProfileUpdateRequest(BaseModel):
     preferred_work_mode: WorkMode | None = None
     career_interests: list[str] | None = None
     preferred_locations: list[str] | None = None
+    # opt-in to employers' AI shortlist (None = leave unchanged)
+    open_to_recruiters: bool | None = None
     # canonical job-family name; "" clears the target family
     target_family: str | None = Field(default=None, max_length=100)
 
@@ -197,6 +199,7 @@ class ProfileDetailResponse(BaseModel):
     preferred_work_mode: WorkMode | None = None
     career_interests: list[str] | None = None
     preferred_locations: list[str] | None = None
+    open_to_recruiters: bool = False
     target_family: str | None = None
     education_rows: list[EducationResponse] = []
     experience_rows: list[ExperienceResponse] = []

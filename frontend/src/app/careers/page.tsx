@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { discoverCareers } from "@/lib/api";
+import DirectionGap from "@/components/direction-gap";
 import { DiscoverResponse, FamilySuggestion } from "@/lib/types";
 import {
   AlertCircle,
@@ -218,6 +219,18 @@ export default function CareersPage() {
             </div>
           )}
         </section>
+
+        {/* Gap vs. the directions the seeker set in their profile */}
+        <div>
+          <DirectionGap token={token} />
+          <p className="mt-2 text-xs text-zinc-500">
+            Targets come from Career Direction on your{" "}
+            <Link href="/profile" className="text-teal-400 underline-offset-4 hover:underline">
+              profile
+            </Link>
+            .
+          </p>
+        </div>
 
         {/* Presets — always shown, same affinity math */}
         <section>

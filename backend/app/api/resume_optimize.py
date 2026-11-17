@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.gap import load_job, load_profile
 from app.core.db import get_db
+from app.core.rate_limit import rate_limited
 from app.models.profile_entities import Resume
 from app.models.user import User
 from app.services import resume_improve
@@ -60,6 +61,7 @@ def _resume_text(db: Session, profile) -> str:
 
 @router.post(
     "/jobs/{job_id}/resume-optimize",
+    dependencies=[Depends(rate_limited("resume_optimize"))],
     response_model=ResumeOptimizeResponse,
     summary="ATS report + grounded resume suggestions for one job",
 )

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -117,6 +117,11 @@ class Profile(Base):
     preferred_work_mode: Mapped[WorkMode | None] = mapped_column(
         SQLEnum(WorkMode, name="work_mode", native_enum=True),
         nullable=True,
+    )
+    # Opt-in: profile may appear in employers' AI shortlists (JD → candidates).
+    # Off by default; applicants are always visible to the posting they applied to.
+    open_to_recruiters: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False, nullable=False
     )
     career_interests: Mapped[list[str] | None] = mapped_column(
         JSONB,

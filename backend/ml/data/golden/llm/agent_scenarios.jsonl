@@ -1,0 +1,16 @@
+{"id": "ag-01", "message": "What jobs fit me best right now?", "expect_tool": ["get_recommendations"], "results": "jobs"}
+{"id": "ag-02", "message": "Find me remote React jobs in Bangalore", "expect_tool": ["search_jobs"], "expect_args": {"query_contains": "react", "location_contains": "bangalore"}, "results": "jobs"}
+{"id": "ag-03", "message": "I want to move into data science. What skills am I missing?", "expect_tool": ["career_direction_gap", "update_career_direction", "get_profile"], "write_allowed": ["update_career_direction"], "results": "direction"}
+{"id": "ag-04", "message": "Show me my saved jobs and where my applications stand", "expect_tool": ["list_my_applications"], "results": "applications"}
+{"id": "ag-05", "message": "Remember that I will never take night shifts", "expect_tool": ["remember"], "write_allowed": ["remember"], "results": "ok"}
+{"id": "ag-06", "message": "Search for blockchain rust jobs in Antarctica", "expect_tool": ["search_jobs"], "results": "empty", "expect_no_jobs_in_reply": true}
+{"id": "ag-07", "message": "Why is the second job a good fit for me?", "history": "jobs", "expect_tool": ["explain_match"], "expect_args": {"job_ref_in": ["2", "j2"]}, "results": "gap"}
+{"id": "ag-08", "message": "Save the first one please", "history": "jobs", "expect_tool": ["save_job"], "expect_args": {"job_ref_in": ["1", "j1"]}, "write_allowed": ["save_job"], "results": "ok"}
+{"id": "ag-09", "message": "Can you tailor my resume for job 1?", "history": "jobs", "expect_tool": ["tailor_resume"], "results": "resume"}
+{"id": "ag-10", "message": "Any good matches today? Also I'm not interested in startups.", "expect_tool": ["get_recommendations", "remember"], "write_allowed": ["remember"], "results": "jobs"}
+{"id": "ag-11", "message": "Find senior backend jobs with Go", "expect_tool": ["search_jobs"], "expect_args": {"query_contains": "go"}, "results": "jobs"}
+{"id": "ag-12", "message": "What's the weather in Delhi?", "expect_tool": [], "results": "none", "expect_no_tool": true}
+{"id": "ag-13", "message": "Tell me about the jobs you'd recommend and how well I match them", "expect_tool": ["get_recommendations"], "results": "jobs"}
+{"id": "ag-14", "message": "Look up data analyst internships", "expect_tool": ["search_jobs"], "expect_args": {"query_contains": "analyst"}, "results": "jobs"}
+{"id": "ag-15", "message": "Find fresher python developer jobs in Pune", "expect_tool": ["search_jobs"], "expect_args": {"query_contains": "python", "level": "entry"}, "results": "jobs"}
+{"id": "ag-16", "message": "I'm a 2026 batch graduate, show me jobs for freshers", "expect_tool": ["search_jobs", "get_recommendations"], "expect_args": {"level": "entry"}, "results": "jobs"}

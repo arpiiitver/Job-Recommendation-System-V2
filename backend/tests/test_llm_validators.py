@@ -154,3 +154,19 @@ class TestPromptAndFenceContracts:
         assert set(PROMPT_CATALOG) == {
             f"P{i}" for i in range(1, 11)
         }
+
+
+def test_reanchor_fixes_offsets_but_never_invents_quotes():
+    from app.services.llm.validators import reanchor_spans, validate_spans
+
+    src = "Skills: Python, SQL. Built Python services."
+    spans = [
+        {"skill": "Python", "start": 30, "end": 36, "quote": "Python"},   # wrong offsets, real quote
+        {"skill": "Go", "start": 0, "end": 2, "quote": "Golang"},         # quote not in text
+    ]
+    fixed = reanchor_spans(spans, src)
+    assert src[fixed[0]["start"]:fixed[0]["end"]] == "Python"
+    assert fixed[0]["start"] == src.find("Python", 20)              # nearest occurrence to the hint
+    problems = validate_spans(fixed, src)
+    assert len(problems) == 1 and "span[1]" in problems[0]          # invented quote still rejected
+    assert spans[0]["start"] == 30                                   # input not mutated

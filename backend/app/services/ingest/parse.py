@@ -127,11 +127,20 @@ def parse_years(text: str) -> float | None:
     return None
 
 
-def map_seniority(title: str, years: float | None = None) -> ExperienceLevel:
-    """Deterministic title→level mapping (reuses the resume seniority ladder)."""
-    level = _infer_seniority(title or "", years)  # type: ignore[arg-type]
-    if level in {e.value for e in ExperienceLevel}:
-        return ExperienceLevel(level)
+def map_seniority(
+    title: str, years: float | None = None, description: str | None = None
+) -> ExperienceLevel:
+    """Deterministic posting → level (``app.services.seniority.classify_job``).
+
+    The old resume ladder mapped "developer"/"analyst" to mid before looking
+    at years, so freshers' roles were labelled mid; the job classifier knows
+    posting language ("freshers can apply", "0-1 years", "2026 batch").
+    """
+    from app.services.seniority import classify_job
+
+    guess = classify_job(title or "", description or "")
+    if guess.explicit:
+        return guess.level
     if years is not None:
         if years < 2:
             return ExperienceLevel.ENTRY

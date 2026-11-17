@@ -1,0 +1,32 @@
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+sqlalchemy==2.0.46
+psycopg[binary]==3.3.2
+pydantic-settings==2.12.0
+alembic==1.18.1
+argon2-cffi==25.1.0
+pyjwt==2.15.1
+pgvector==0.5.1
+email-validator==2.3.0
+python-multipart==0.0.33
+scikit-learn==1.9.1
+numpy==2.5.4
+# Resume text extraction
+pypdf==7.0.1
+python-docx==1.2.0
+# LLM-based structured extraction (Gemini) — optional; regex fallback used if key absent
+google-generativeai==0.8.6
+# LLM provider abstraction (plan §15 — OpenAI default)
+openai==3.49.0
+# Embeddings / similarity (plan §4)
+# Ranklet re-rank + calibrator training (M2/M3, plan §17)
+lightgbm==4.7.0
+joblib==1.6.0
+# Skill alias fuzzy matching (plan §20 cascade)
+rapidfuzz==3.14.6
+scipy==1.18.1
+pyyaml==6.0.3
+httpx==0.28.1
+# Embeddings: the same all-MiniLM-L6-v2 through onnxruntime (EMBEDDING_BACKEND=onnx),
+# identical vectors to the torch path at ~1/10 the RAM — fits a 512 MB instance.
+fastembed==0.9.1

@@ -67,6 +67,8 @@ export interface ProfileDetail {
   target_family?: string | null;
   preferred_locations?: string[] | null;
   preferred_work_mode?: string | null;
+  /** Seeker opt-in: discoverable in employers' AI shortlist. */
+  open_to_recruiters?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +88,8 @@ export interface ProfileUpdatePayload {
   career_interests?: string[];
   /** Canonical family name; "" clears the current target. */
   target_family?: string;
+  /** Opt in/out of employer AI-shortlist discovery. */
+  open_to_recruiters?: boolean;
 }
 
 export interface CompanySummary {
@@ -233,6 +237,10 @@ export interface JobDetail {
   family?: string | null;
   /** §14 "Powered by: <project> — <band>" (only surfaced at Moderate+). */
   project_relevance?: string | null;
+  /** false = the posting states no seniority (level is a default, not evidence). */
+  level_explicit?: boolean | null;
+  /** Why the level was assigned, e.g. "posting says 'Freshers can apply'". */
+  level_reason?: string | null;
   /**
    * Per-listing skill-gap preview (signed-in seekers with profile skills).
    * `missing_skills` is required-only, matching the recommendation feed.
@@ -255,6 +263,60 @@ export interface JobListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+  /** Skill disparity across this page of results (null when anonymous / no annotations). */
+  skill_gap_summary?: SkillGapSummary | null;
+}
+
+// ---------------- Aggregate skill disparity ---------------- //
+
+/** One skill's demand across a set of analysed jobs. */
+export interface SkillDemand {
+  skill: string;
+  /** How many analysed jobs ask for this skill. */
+  jobs: number;
+  /** jobs / jobs_analyzed (0..1). */
+  share: number;
+  status: "have" | "transferable" | "missing";
+}
+
+/** Skill disparity across a whole result set (search / AI search / feed). */
+export interface SkillGapSummary {
+  jobs_analyzed: number;
+  /** 0..100 */
+  avg_skill_match: number | null;
+  top_missing: SkillDemand[];
+  top_transferable: SkillDemand[];
+  top_matched: SkillDemand[];
+  headline: string | null;
+}
+
+export interface DirectionGapSampleJob {
+  id: string | null;
+  title: string | null;
+  company: string | null;
+  source: string | null;
+  url?: string | null;
+}
+
+/** What the market asks of one target role/domain vs. the seeker's skills. */
+export interface DirectionGap {
+  target: string;
+  kind: "role" | "family";
+  jobs_analyzed: number;
+  /** "platform" and/or "live" */
+  sources: string[];
+  /** 0..100, demand-weighted coverage */
+  readiness: number | null;
+  skills: SkillDemand[];
+  top_missing: SkillDemand[];
+  sample_jobs: DirectionGapSampleJob[];
+  note: string | null;
+}
+
+export interface DirectionGapResponse {
+  targets: DirectionGap[];
+  seeker_skill_count: number;
+  message: string | null;
 }
 
 /** §12 explanation contract — components verbatim from the deterministic scorer. */
@@ -276,6 +338,8 @@ export interface RecommendationItem {
   content_similarity_score: number;
   matched_skills: string[];
   missing_skills: string[];
+  /** Missing skills the seeker can transfer into from related skills. */
+  transferable_skills?: string[];
   match_reasons: string[];
   explanation?: ExplanationContract | null;
   readiness?: Readiness | null;
@@ -294,6 +358,8 @@ export interface RecommendationFeedResponse {
   profile_completeness_score: number;
   recommendation_type: "content_based" | "cold_start";
   recommendation_strategy: string;
+  /** Skill disparity across the whole feed (null when no annotations). */
+  skill_gap_summary?: SkillGapSummary | null;
   /** Phase 3: actual rerank strategy + model version behind this feed. */
   strategy?: string;
   model_version?: string | null;
@@ -424,6 +490,53 @@ export interface PostingTalent {
   scored: number;
   job_skills: string[];
   candidates: TalentCandidate[];
+}
+
+// ---------------- AI shortlist (role description -> ranked candidates) ---------------- //
+
+export interface ShortlistRequest {
+  /** Role description, <= 20000 chars; >= 40 chars unless posting_id is given. */
+  jd_text?: string;
+  posting_id?: string;
+  title?: string;
+  location?: string;
+  /** 1..30, default 10. */
+  top_k?: number;
+}
+
+export interface ShortlistCandidate {
+  rank: number;
+  profile_id: string;
+  name: string;
+  headline: string | null;
+  location: string | null;
+  years_of_experience: number | null;
+  fit_score: number;
+  components: Record<string, number>;
+  matched_skills: string[];
+  missing_required: string[];
+  transferable: string[];
+  why_fit: string;
+  gaps: string;
+  explanation_source: "llm" | "template";
+  is_applicant: boolean;
+  application_id: string | null;
+  email: string | null;
+}
+
+export interface ShortlistResponse {
+  title: string;
+  seniority: string;
+  years_min: number | null;
+  required_skills: string[];
+  preferred_skills: string[];
+  /** How the JD was parsed. */
+  structured_by: "llm+rules" | "rules";
+  /** Skills the LLM proposed that were not in the JD text (dropped). */
+  dropped_llm_skills: string[];
+  pool_size: number;
+  privacy_note: string;
+  candidates: ShortlistCandidate[];
 }
 
 // ---------------- E3: posting insights ---------------- //
@@ -772,6 +885,8 @@ export interface JobNlResponse {
   mode: "llm" | "fts";
   parsed_filters: Record<string, unknown>;
   q: string;
+  /** Skill disparity across the AI-search results (null when anonymous / no annotations). */
+  skill_gap_summary?: SkillGapSummary | null;
 }
 
 export interface AtsCheck {
@@ -1337,4 +1452,143 @@ export interface OnboardingCompleteResponse {
   weights: { component: string; label: string; weight: number }[];
   target_family: string | null;
   message: string;
+}
+
+// ---------------- Career Copilot (agent chat + long-term memory) ---------------- //
+
+export type CopilotMode = "llm" | "fallback";
+
+export interface CopilotStatus {
+  mode: CopilotMode;
+  provider: string | null;
+  model: string | null;
+  tools: string[];
+}
+
+/** One tool call the agent made during a turn. */
+export interface CopilotTrace {
+  tool: string;
+  args: Record<string, unknown>;
+  ok: boolean;
+  ms: number;
+  /** True when the tool changed the user's data (save job, remember, ...). */
+  writes: boolean;
+  error: string | null;
+}
+
+export interface CopilotJobCard {
+  type: "job";
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  is_remote: boolean;
+  salary: string | null;
+  source: string;
+  url: string | null;
+  match_score: number | null;
+  skill_match: number | null;
+  matched_skills: string[];
+  missing_skills: string[];
+  transferable_skills: string[];
+  reasons: string[];
+}
+
+export type CopilotSkillGapSummaryCard = SkillGapSummary & { type: "skill_gap_summary" };
+
+export type CopilotDirectionGapCard = DirectionGap & { type: "direction_gap" };
+
+export interface CopilotGapCard {
+  type: "gap";
+  job_id: string;
+  title: string;
+  match_score: number | null;
+  skill_gap_score: number | null;
+  /** Backend sends `{value, band}`; tolerate a bare number too. */
+  readiness: Readiness | number | null;
+  counts: Partial<Record<"strong" | "partial" | "transferable" | "missing", number>> | null;
+  missing_required_skills: string[];
+  weakest_link: string | null;
+  skills: { skill: string; status: string }[];
+  reasons: string[];
+}
+
+export interface CopilotApplicationsCard {
+  type: "applications";
+  items: {
+    job_id: string;
+    title: string;
+    company: string;
+    status: string;
+    updated: string | null;
+  }[];
+}
+
+export interface CopilotResumeCard {
+  type: "resume";
+  job_id: string;
+  job_title: string;
+  ats: Record<string, unknown>;
+  suggestions: Record<string, unknown>[];
+  llm_used: boolean;
+  disclaimer: string | null;
+}
+
+export type CopilotCard =
+  | CopilotJobCard
+  | CopilotSkillGapSummaryCard
+  | CopilotDirectionGapCard
+  | CopilotGapCard
+  | CopilotApplicationsCard
+  | CopilotResumeCard;
+
+export interface CopilotChatResponse {
+  conversation_id: string;
+  message_id: string;
+  reply: string;
+  /** May contain card types this UI doesn't know yet — they are ignored. */
+  cards: CopilotCard[];
+  trace: CopilotTrace[];
+  mode: CopilotMode;
+  memories_used: string[];
+  model: string | null;
+}
+
+export interface CopilotConversationSummary {
+  id: string;
+  title: string;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface CopilotMessageMeta {
+  cards?: CopilotCard[];
+  trace?: CopilotTrace[];
+  mode?: CopilotMode;
+  model?: string | null;
+  memories_used?: string[];
+  shown?: unknown;
+}
+
+export interface CopilotMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  meta: CopilotMessageMeta | null;
+}
+
+export interface CopilotConversation extends CopilotConversationSummary {
+  summary: string | null;
+  messages: CopilotMessage[];
+}
+
+export type CopilotMemoryKind = "preference" | "dealbreaker" | "goal" | "fact";
+
+export interface CopilotMemory {
+  id: string;
+  kind: CopilotMemoryKind;
+  content: string;
+  source: "chat" | "tool" | "user";
+  updated_at: string;
 }

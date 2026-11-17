@@ -142,9 +142,18 @@ export default function TalentPage() {
                   anyone automatically.
                 </p>
               </div>
-              <div className="flex items-center gap-1.5 rounded-lg bg-zinc-950/70 px-3 py-2 text-[11px] font-medium text-zinc-400 ring-1 ring-inset ring-zinc-800">
-                <Lock className="h-3.5 w-3.5 text-zinc-500" />
-                Only your applicants — no global pool
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-1.5 rounded-lg bg-zinc-950/70 px-3 py-2 text-[11px] font-medium text-zinc-400 ring-1 ring-inset ring-zinc-800">
+                  <Lock className="h-3.5 w-3.5 text-zinc-500" />
+                  Ranks your applicants only — AI shortlist searches opted-in seekers
+                </div>
+                <Link
+                  href={`/hiring/shortlist?posting=${encodeURIComponent(jobId)}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs font-semibold text-teal-300 hover:bg-teal-500/20"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Find more candidates with AI
+                </Link>
               </div>
             </div>
 

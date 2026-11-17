@@ -87,8 +87,14 @@ def fetch_adzuna_search(
     full_time: int | None = None,
     country: str | None = None,
     timeout: float | None = None,
+    what_or: str | None = None,
+    what_exclude: str | None = None,
 ) -> tuple[list[dict], int]:
     """Live Adzuna search → (raw postings, total match count).
+
+    `what_or` (any of these words) and `what_exclude` (none of these) are
+    Adzuna's own keyword operators — used to steer seniority without ANDing
+    "fresher" into `what` (which collapses recall to zero).
 
     Used by the query-time live search (`app.services.live_jobs`): `where` is
     Adzuna's location filter, `sort_by` its own ordering ("date" | "salary" |
@@ -109,6 +115,10 @@ def fetch_adzuna_search(
         "results_per_page": results_per_page,
         "what": query,
     }
+    if what_or:
+        params["what_or"] = what_or
+    if what_exclude:
+        params["what_exclude"] = what_exclude
     if full_time is not None:
         params["full_time"] = full_time
     if where:

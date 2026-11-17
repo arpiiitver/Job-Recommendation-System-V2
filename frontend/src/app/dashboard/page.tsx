@@ -20,6 +20,7 @@ import {
 import {
   AlertCircle,
   ArrowRight,
+  Bot,
   Briefcase,
   Building2,
   CheckCircle,
@@ -172,6 +173,40 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 space-y-6">
           {user.role === "job_seeker" ? (
             <>
+              {/* Career Copilot entry point */}
+              <Link
+                href="/copilot"
+                className="group relative block overflow-hidden rounded-xl border border-teal-500/30 bg-gradient-to-br from-teal-500/10 via-zinc-900/60 to-cyan-600/10 p-6 backdrop-blur transition-colors hover:border-teal-400/50"
+              >
+                <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal-500/10 blur-3xl" />
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 text-zinc-950 shadow-md shadow-teal-500/20">
+                      <Bot className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-100">
+                        Career Copilot
+                        <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-teal-300 ring-1 ring-teal-500/30">
+                          New
+                        </span>
+                      </h2>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Chat with an AI agent that searches jobs, explains your skill gaps, saves
+                        jobs and tailors your resume — and remembers your preferences.
+                      </p>
+                      <p className="mt-2 text-xs italic text-zinc-500">
+                        &ldquo;Find remote React jobs in Bangalore&rdquo; · &ldquo;What am I missing for data science?&rdquo;
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-md shadow-teal-500/20 transition-colors group-hover:bg-teal-400">
+                    Open Copilot
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </div>
+              </Link>
+
               {/* Seeker Profile Overview Card */}
               <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-6 backdrop-blur">
                 <div className="flex items-center justify-between">

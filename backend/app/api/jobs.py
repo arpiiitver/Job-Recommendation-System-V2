@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, get_optional_user, require_roles
 from app.core.db import get_db
+from app.core.rate_limit import rate_limited
 from app.models.application import Application
 from app.models.company import Company
 from app.models.enums import EmploymentType, ExperienceLevel, JobStatus, UserRole, WorkMode
@@ -28,6 +29,14 @@ from app.schemas.job import (
 from app.schemas.user import CompanySummary
 from app.services import live_jobs, location_hint, nl_search
 from app.services.gap_preview import annotate_skill_gaps
+from app.services.seniority import (
+    LevelGuess,
+    classify_job,
+    detect_level_intent,
+    level_tier,
+    strip_intent_words,
+)
+from app.services.skill_disparity import summarize_items
 from app.services.skill_normalizer import build_db_normalizer, resolve_skill
 
 router = APIRouter(tags=["jobs"])
@@ -116,6 +125,44 @@ def _live_item_key(item: JobDetailResponse) -> str:
     return f"{(item.title or '').strip().lower()}|{(item.company.name or '').strip().lower()}"
 
 
+def _level_guess(item: JobDetailResponse) -> LevelGuess:
+    """Seniority evidence for one card.  Employer-posted (native) jobs carry a
+    level the employer chose; ingested/live ones are classified from text."""
+    if (item.source or "native") == "native":
+        return LevelGuess(item.experience_level, True, "set by the employer")
+    if item.level_explicit is not None:
+        return LevelGuess(item.experience_level, item.level_explicit, item.level_reason or "")
+    return classify_job(item.title, item.description)
+
+
+def _apply_level(
+    items: list[JobDetailResponse],
+    wanted: ExperienceLevel | None,
+    *,
+    drop_mismatches: bool = True,
+) -> list[JobDetailResponse]:
+    """Order cards confirmed-level first, unknown next; drop explicit mismatches
+    (or keep them last when ``drop_mismatches`` is False — soft preference)."""
+    if wanted is None or not items:
+        return items
+    ranked = []
+    for index, item in enumerate(items):
+        guess = _level_guess(item)
+        if item.level_explicit is None:
+            item.level_explicit = guess.explicit
+            item.level_reason = guess.reason
+            item.experience_level = guess.level  # card shows the evidence-based level
+        ranked.append((level_tier(guess.level, guess.explicit, wanted), index, item))
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    return [item for tier, _i, item in ranked if not (drop_mismatches and tier == 2)]
+
+
+def _seeker_years(db: Session, user: User | None) -> float | None:
+    if user is None:
+        return None
+    return db.scalar(select(Profile.years_of_experience).where(Profile.user_id == user.id))
+
+
 def _live_where(
     hint: location_hint.LocationHint | None, location: str | None
 ) -> str | None:
@@ -143,6 +190,7 @@ def _paginate_merged(
     page_size: int,
     live_country: str | None = None,
     location_priority: location_hint.LocationHint | None = None,
+    level: ExperienceLevel | None = None,
 ) -> tuple[list[JobDetailResponse], int]:
     """One offset-paginated window over platform matches + live Adzuna results.
 
@@ -188,6 +236,7 @@ def _paginate_merged(
             page=page_no,
             page_size=page_size,
             sort_by=sort_by,
+            level=level,
         )
         if not pages:
             live_total = total
@@ -390,6 +439,28 @@ def list_jobs(
         # country instead of sending a meaningless live `what`.
         search_text = _DEFAULT_BROWSE_QUERY
 
+    # Seniority intent ("fresher python jobs", "entry level analyst"): the
+    # seniority words leave the keyword query (Adzuna ANDs `what`, so
+    # "python developer fresher" returns nothing) and become a level signal
+    # applied to platform + live results.  An explicit experience_level
+    # filter always wins.  Signed-in seekers with < 1 year of experience get
+    # the same ordering as a soft preference (nothing dropped).
+    level_intent = experience_level or detect_level_intent(search_text)
+    live_text_override: str | None = None
+    if level_intent is not None and search_text:
+        stripped = strip_intent_words(search_text)
+        if not nl_search.content_tokens(stripped):
+            # only seniority words ("fresher jobs"): Adzuna's own "fresher"
+            # listings are the best live source; the platform side browses
+            stripped = ""
+            live_text_override = "fresher" if level_intent == ExperienceLevel.ENTRY else None
+        search_text = stripped
+    soft_level = False
+    if level_intent is None:
+        years = _seeker_years(db, current_user)
+        if years is not None and years < 1:
+            level_intent, soft_level = ExperienceLevel.ENTRY, True
+
     query = (
         select(Job)
         .options(
@@ -549,7 +620,7 @@ def list_jobs(
             min_salary,
         ]
     )
-    live_query = search_text or (None if has_filters else _DEFAULT_BROWSE_QUERY)
+    live_query = live_text_override or search_text or (None if has_filters else _DEFAULT_BROWSE_QUERY)
 
     if live_query:
         if rank_column is not None and snippet_column is not None:
@@ -567,6 +638,7 @@ def list_jobs(
         else:
             platform_rows = db.scalars(query.limit(_MERGE_PLATFORM_CAP)).all()
             platform_items = [_format_job_response(j) for j in platform_rows]
+        platform_items = _apply_level(platform_items, level_intent, drop_mismatches=not soft_level)
         items, total = _paginate_merged(
             platform_items,
             live_query=live_query,
@@ -576,7 +648,9 @@ def list_jobs(
             sort_by=sort_by,
             offset=offset,
             page_size=page_size,
+            level=None if soft_level else level_intent,
         )
+        items = _apply_level(items, level_intent, drop_mismatches=not soft_level)
     else:
         # Filter-only view: platform postings only.
         count_query = select(func.count()).select_from(query.subquery())
@@ -593,10 +667,11 @@ def list_jobs(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+        skill_gap_summary=summarize_items(items) if current_user is not None else None,
     )
 
 
-@router.get("/jobs/nl", response_model=JobNlResponse)
+@router.get("/jobs/nl", response_model=JobNlResponse, dependencies=[Depends(rate_limited("nl_search"))])
 def nl_search_jobs(
     db: Annotated[Session, Depends(get_db)],
     q: Annotated[str, Query(min_length=1, max_length=300)],
@@ -616,6 +691,16 @@ def nl_search_jobs(
     filters, mode = nl_search.parse_query(q)
     filters = nl_search.canonicalize_skills(db, filters)
 
+    # Seniority: the LLM does not reliably map Indian-English "fresher" /
+    # "2026 batch" to entry — detect it deterministically, and keep
+    # seniority-only words out of the keyword query (they collapse recall).
+    level_intent = filters.experience_level or detect_level_intent(q)
+    if level_intent is not None:
+        kept = strip_intent_words(filters.keywords or "")
+        filters = filters.model_copy(
+            update={"experience_level": level_intent, "keywords": kept if nl_search.content_tokens(kept) else None}
+        )
+
     # Deterministic country/city extraction.  The LLM may miss a location the
     # user typed in free text (the FTS fallback never extracts one), so
     # "software engineer jobs in Germany" used to rank USA/Mexico first.
@@ -626,8 +711,10 @@ def nl_search_jobs(
     query_filters = filters
     if hint is not None:
         stripped = location_hint.strip_location(filters.keywords or q, hint)
+        if level_intent is not None:
+            stripped = strip_intent_words(stripped)
         if not nl_search.content_tokens(stripped):
-            stripped = _DEFAULT_BROWSE_QUERY
+            stripped = "fresher" if level_intent == ExperienceLevel.ENTRY else _DEFAULT_BROWSE_QUERY
         query_filters = filters.model_copy(
             update={
                 "keywords": stripped,
@@ -652,7 +739,7 @@ def nl_search_jobs(
 
     candidates = list(db.scalars(query.limit(nl_search.CANDIDATE_CAP)).all())
     ranked = nl_search.hybrid_rank(db, candidates, query_filters)
-    platform_items = [_format_job_response(job) for job in ranked]
+    platform_items = _apply_level([_format_job_response(job) for job in ranked], level_intent)
 
     # Keep the country-first intent even before pagination: hybrid_rank only
     # knows text/skills, so partition its output by the detected location.
@@ -671,7 +758,7 @@ def nl_search_jobs(
             for part in [query_filters.keywords or "", *list(query_filters.skills)[:4]]
             if part and part.strip()
         ).strip()
-        or q.strip()
+        or ("fresher" if level_intent == ExperienceLevel.ENTRY else q.strip())
     )
     offset = (page - 1) * page_size
     if live_query:
@@ -684,7 +771,9 @@ def nl_search_jobs(
             sort_by="relevance",
             offset=offset,
             page_size=page_size,
+            level=level_intent,
         )
+        items = _apply_level(items, level_intent)
     else:
         total = len(platform_items)
         items = platform_items[offset : offset + page_size]
@@ -699,6 +788,7 @@ def nl_search_jobs(
         mode=mode,
         parsed_filters=nl_search.parsed_filters_dict(echo_filters),
         q=q,
+        skill_gap_summary=summarize_items(items) if current_user is not None else None,
     )
 
 

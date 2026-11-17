@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { getRecommendations, submitFeedback } from "@/lib/api";
 import { formatSalary } from "@/lib/format";
+import SkillGapSummary from "@/components/skill-gap-summary";
 import {
   FeedbackReason,
   RecommendationFeedResponse,
@@ -14,6 +15,7 @@ import {
 import {
   AlertCircle,
   ArrowRight,
+  ArrowRightLeft,
   Briefcase,
   CheckCircle2,
   ChevronRight,
@@ -312,6 +314,9 @@ export default function RecommendationsPage() {
           </div>
         </div>
 
+        {/* Skill disparity across the whole feed */}
+        <SkillGapSummary summary={feed?.skill_gap_summary} className="mb-6" />
+
         {/* Recommendation Cards Feed */}
         {filteredItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/30 p-12 text-center">
@@ -465,7 +470,7 @@ export default function RecommendationsPage() {
                         </div>
                       )}
 
-                      {/* Skill Breakdown: Matched & Missing */}
+                      {/* Skill Breakdown: Matched, Transferable & Missing */}
                       <div className="mt-4 space-y-2">
                         {item.matched_skills.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -476,6 +481,22 @@ export default function RecommendationsPage() {
                               <span
                                 key={skill}
                                 className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300"
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {(item.transferable_skills?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-medium text-sky-400 flex items-center gap-1 mr-1">
+                              <ArrowRightLeft className="h-3.5 w-3.5" /> Transferable:
+                            </span>
+                            {(item.transferable_skills ?? []).map((skill) => (
+                              <span
+                                key={skill}
+                                className="rounded-md bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 text-xs font-medium text-sky-300"
                               >
                                 {skill}
                               </span>

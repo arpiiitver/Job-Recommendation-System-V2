@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { getUnreadNotificationCount } from "@/lib/api";
-import { Bell, Briefcase, Bookmark, Building2, Compass, FileText, GitBranch, LayoutDashboard, ListChecks, LogOut, PlusCircle, Route, Settings as SettingsIcon, ShieldCheck, Sparkles, User as UserIcon } from "lucide-react";
+import { Bell, Bot, Briefcase, Bookmark, Building2, Compass, FileText, GitBranch, LayoutDashboard, ListChecks, LogOut, PlusCircle, Route, Settings as SettingsIcon, ShieldCheck, Sparkles, User as UserIcon } from "lucide-react";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -145,6 +145,17 @@ export function Navbar() {
                 >
                   <Sparkles className="h-4 w-4 text-teal-400" />
                   AI Matches
+                </Link>
+                <Link
+                  href="/copilot"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    pathname === "/copilot"
+                      ? "text-teal-400 bg-zinc-900/60"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+                  }`}
+                >
+                  <Bot className="h-4 w-4 text-teal-400" />
+                  Copilot
                 </Link>
                 <Link
                   href="/careers"

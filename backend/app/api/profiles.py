@@ -45,7 +45,9 @@ from app.services.skill_normalizer import resolve_skill
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
-UPLOAD_DIR = Path("/app/uploads/resumes")
+# <backend root>/uploads/resumes (= /app/uploads/resumes in the dev container);
+# UPLOAD_DIR overrides it, e.g. for a host where /app isn't writable.
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR") or Path(__file__).resolve().parents[2] / "uploads") / "resumes"
 if not UPLOAD_DIR.exists():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -246,6 +248,7 @@ def _format_profile_response(profile: Profile) -> ProfileDetailResponse:
         preferred_work_mode=profile.preferred_work_mode,
         career_interests=profile.career_interests,
         preferred_locations=profile.preferred_locations,
+        open_to_recruiters=bool(getattr(profile, "open_to_recruiters", False)),
         target_family=(
             profile.target_family.name if profile.target_family is not None else None
         ),
@@ -341,6 +344,8 @@ def update_my_profile(
         profile.preferred_locations = [
             l.strip() for l in payload.preferred_locations if l and l.strip()
         ]
+    if payload.open_to_recruiters is not None:
+        profile.open_to_recruiters = payload.open_to_recruiters
     if payload.target_family is not None:
         raw_family = payload.target_family.strip()
         if not raw_family:

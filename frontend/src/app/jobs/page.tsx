@@ -4,8 +4,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getJobs, searchJobsNL } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { JobDetail, JobNlResponse } from "@/lib/types";
+import { JobDetail, JobNlResponse, SkillGapSummary as SkillGapSummaryData } from "@/lib/types";
 import { formatSalary } from "@/lib/format";
+import SkillGapSummary from "@/components/skill-gap-summary";
+import LevelBadge from "@/components/level-badge";
 import {
   AlertCircle,
   ArrowRightLeft,
@@ -31,6 +33,8 @@ export default function JobsPage() {
   const { token } = useAuth();
   const [jobs, setJobs] = useState<JobDetail[]>([]);
   const [total, setTotal] = useState(0);
+  // Skill disparity across the standard (keyword/filter) result page.
+  const [gapSummary, setGapSummary] = useState<SkillGapSummaryData | null>(null);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -65,9 +69,11 @@ export default function JobsPage() {
       }, token);
       setJobs(data.items);
       setTotal(data.total);
+      setGapSummary(data.skill_gap_summary ?? null);
     } catch {
       setJobs([]);
       setTotal(0);
+      setGapSummary(null);
     } finally {
       setIsLoading(false);
     }
@@ -475,6 +481,14 @@ export default function JobsPage() {
         </span>
       </div>
 
+      {/* Skill disparity across the visible result set (standard or AI search) */}
+      {!isLoading && jobs.length > 0 && (
+        <SkillGapSummary
+          summary={nlResult ? nlResult.skill_gap_summary : gapSummary}
+          className="mt-4"
+        />
+      )}
+
       {/* Results List */}
       {isLoading ? (
         <div className="mt-8 flex justify-center py-20">
@@ -539,9 +553,11 @@ export default function JobsPage() {
                       </span>
                     )}
 
-                    <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300 capitalize">
-                      {job.experience_level}
-                    </span>
+                    <LevelBadge
+                      level={job.experience_level}
+                      explicit={job.level_explicit}
+                      reason={job.level_reason}
+                    />
 
                     {job.relevance_score !== null && job.relevance_score !== undefined && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-teal-400/10 px-2 py-0.5 text-[11px] font-semibold text-teal-300 ring-1 ring-teal-400/30">

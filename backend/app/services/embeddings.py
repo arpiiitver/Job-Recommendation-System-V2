@@ -4,6 +4,8 @@ Backs the previously-dead `Vector(384)` columns on profiles, jobs and skills.
 
 Backend selection (settings.embedding_backend):
 - "minilm" — sentence-transformers/all-MiniLM-L6-v2 (384-d, real semantics)
+- "onnx"   — the same MiniLM through onnxruntime (fastembed): identical
+             vectors, ~1/10 the RAM, no torch (small free-tier hosts)
 - "hashing" — deterministic sklearn HashingVectorizer fallback (no download,
   no network, stable across processes) so the API/tests always work offline
 - "auto"   — MiniLM if importable, else hashing; the active backend is logged
@@ -47,20 +49,34 @@ class Embedder:
 
     @staticmethod
     def _resolve_backend(backend: str, model_name: str) -> str:
+        """auto: MiniLM via torch → MiniLM via ONNX (fastembed) → hashing.
+
+        "onnx" runs the *same* all-MiniLM-L6-v2 weights through onnxruntime:
+        identical 384-d vectors (cosine 1.0 vs torch) at ~1/10 the memory and
+        without the multi-GB torch install — what lets the API fit a 512 MB
+        free-tier instance.
+        """
         if backend == "hashing":
             return "hashing"
-        try:
-            if backend in ("auto", "minilm"):
+        if backend in ("auto", "minilm"):
+            try:
                 from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
                 model = SentenceTransformer(model_name)
                 Embedder._model_store = model  # type: ignore[attr-defined]
                 return "minilm"
-        except Exception as exc:  # ImportError, model download failure, etc.
-            if backend == "minilm":
-                log.warning("MiniLM requested but unavailable (%s); using hashing fallback.", exc)
-            else:
-                log.info("sentence-transformers unavailable (%s); using hashing fallback.", exc)
+            except Exception as exc:  # ImportError, model download failure, etc.
+                log.info("sentence-transformers unavailable (%s); trying ONNX.", exc)
+        if backend in ("auto", "minilm", "onnx"):
+            try:
+                from fastembed import TextEmbedding  # noqa: PLC0415
+
+                Embedder._onnx_store = TextEmbedding(  # type: ignore[attr-defined]
+                    f"sentence-transformers/{model_name.split('/')[-1]}"
+                )
+                return "onnx"
+            except Exception as exc:
+                log.warning("ONNX MiniLM unavailable (%s); using hashing fallback.", exc)
         return "hashing"
 
     def _get_model(self):
@@ -95,6 +111,10 @@ class Embedder:
                 texts, normalize_embeddings=True, show_progress_bar=False
             )
             return np.asarray(vecs, dtype=np.float32)
+        if self.backend == "onnx":
+            vecs = np.asarray(list(Embedder._onnx_store.embed(texts)), dtype=np.float32)  # type: ignore[attr-defined]
+            norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+            return vecs / np.where(norms == 0, 1.0, norms)
         return self._get_hashing().transform(texts).toarray().astype(np.float32)
 
     def encode_one(self, text: str) -> list[float]:
@@ -118,9 +138,20 @@ def build_profile_text(
     skill_names: list[str],
     target_family: str | None = None,
     project_blurb: str | None = None,
+    target_roles: list[str] | None = None,
 ) -> str:
-    """plan §6: embed(headline + bio + canonical skills + target family + project blurb)."""
-    parts = [p for p in (headline, bio) if p]
+    """plan §6: embed(target roles + headline + bio + canonical skills + target family + project blurb).
+
+    Target roles (career-direction form) go first and twice: for a role or
+    domain switcher the *destination* must dominate the semantic component,
+    otherwise the embedding only ever points back at their past titles.
+    """
+    parts: list[str] = []
+    roles = [r.strip() for r in (target_roles or []) if r and r.strip()]
+    if roles:
+        joined = ", ".join(roles)
+        parts.append(f"Target roles: {joined}. Looking for {joined} positions.")
+    parts.extend(p for p in (headline, bio) if p)
     if skill_names:
         parts.append("Skills: " + ", ".join(skill_names))
     if target_family:
@@ -171,6 +202,7 @@ def ensure_profile_embedding(profile: Any) -> bool:
             else None
         ),
         project_blurb=None,
+        target_roles=list(getattr(profile, "career_interests", None) or []),
     )
     profile.embedding = get_embedder().encode_one(text)
     profile.embedding_updated_at = datetime.now(timezone.utc)

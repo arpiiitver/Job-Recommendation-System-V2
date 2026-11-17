@@ -42,3 +42,6 @@ mlruns/
 # Ingestion run snapshots / reports (regenerated per run)
 backend/ml/data/raw/
 backend/ml/reports/
+
+# Deployment secrets (values pasted into Hugging Face / Vercel settings)
+deploy/*.env

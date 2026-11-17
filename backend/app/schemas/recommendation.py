@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.job import JobDetailResponse
+from app.schemas.skill_gap import SkillGapSummary
 
 
 class Readiness(BaseModel):
@@ -36,6 +37,7 @@ class RecommendationItem(BaseModel):
     content_similarity_score: float = Field(ge=0.0, le=100.0, description="Semantic (embedding) similarity percentage")
     matched_skills: list[str] = Field(default_factory=list, description="Skills possessed by seeker required or preferred by job")
     missing_skills: list[str] = Field(default_factory=list, description="Required job skills missing from seeker profile")
+    transferable_skills: list[str] = Field(default_factory=list, description="Missing skills the seeker can transfer into from related skills")
     match_reasons: list[str] = Field(default_factory=list, description="Human-readable explanation of why this job matches")
     # ---- additive Phase 1 fields (existing frontend keeps compiling) ----
     explanation: ExplanationSchema | None = None
@@ -59,3 +61,4 @@ class RecommendationFeedResponse(BaseModel):
     strategy: str = "deterministic"
     model_version: str | None = None
     personalization_note: str | None = None
+    skill_gap_summary: SkillGapSummary | None = None

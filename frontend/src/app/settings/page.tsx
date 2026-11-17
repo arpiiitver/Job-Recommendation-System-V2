@@ -7,13 +7,15 @@ import { useAuth } from "@/lib/auth-context";
 import {
   clearAlertHistory,
   getAlertSettings,
+  getMyProfile,
   getPreferences,
   previewAlertMatches,
   resetPreferences,
   updateAlertSettings,
+  updateMyProfile,
 } from "@/lib/api";
 import { AlertPreview, AlertSettings, PreferenceState } from "@/lib/types";
-import { BellRing, History, Info, Mail, RotateCcw, Settings2, Sparkles } from "lucide-react";
+import { BellRing, History, Info, Mail, RotateCcw, Settings2, Sparkles, UserSearch } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -27,6 +29,10 @@ export default function SettingsPage() {
   const [alertsNote, setAlertsNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<AlertPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  // null = no seeker profile (toggle hidden); otherwise the saved opt-in value
+  const [openToRecruiters, setOpenToRecruiters] = useState<boolean | null>(null);
+  const [discoverySaving, setDiscoverySaving] = useState(false);
+  const [discoveryNote, setDiscoveryNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -37,6 +43,12 @@ export default function SettingsPage() {
         setAlerts(await getAlertSettings(token));
       } catch {
         setAlerts(null);
+      }
+      try {
+        const profile = await getMyProfile(token);
+        setOpenToRecruiters(profile.open_to_recruiters ?? false);
+      } catch {
+        setOpenToRecruiters(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load preferences");
@@ -67,6 +79,24 @@ export default function SettingsPage() {
       setAlertsNote(err instanceof Error ? err.message : "Failed to save alert settings");
     } finally {
       setAlertsSaving(false);
+    }
+  };
+
+  const saveDiscovery = async (next: boolean) => {
+    if (!token) return;
+    const prev = openToRecruiters;
+    setOpenToRecruiters(next);
+    setDiscoverySaving(true);
+    setDiscoveryNote(null);
+    try {
+      const saved = await updateMyProfile({ open_to_recruiters: next }, token);
+      setOpenToRecruiters(saved.open_to_recruiters ?? next);
+      setDiscoveryNote(next ? "Saved — employers can now find you" : "Saved — you're hidden from employer search");
+    } catch (err) {
+      setOpenToRecruiters(prev);
+      setDiscoveryNote(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setDiscoverySaving(false);
     }
   };
 
@@ -355,6 +385,32 @@ export default function SettingsPage() {
               </>
             )}
           </div>
+
+          {openToRecruiters !== null && (
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400">
+                <UserSearch className="h-4 w-4 text-teal-400" />
+                Recruiter discovery
+              </h2>
+              <label className="mt-4 flex items-start gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">
+                <input
+                  type="checkbox"
+                  checked={openToRecruiters}
+                  disabled={discoverySaving}
+                  onChange={(e) => saveDiscovery(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-teal-500 disabled:opacity-50"
+                />
+                <span>
+                  <span className="block text-xs font-semibold text-zinc-200">Let employers find me</span>
+                  <span className="block text-[11px] text-zinc-500">
+                    Employers&apos; AI shortlist can show your headline, skills and experience, but your
+                    name is abbreviated and contact details stay hidden unless you apply.
+                  </span>
+                </span>
+              </label>
+              {discoveryNote && <p className="mt-2 text-[11px] text-teal-300/90">{discoveryNote}</p>}
+            </div>
+          )}
 
           {/* Recent learned changes */}
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

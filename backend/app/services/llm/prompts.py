@@ -165,6 +165,7 @@ Schema:
 
 Rules:
 - Keep these exact strings untouched wherever they appear: {numbers}
+- Never introduce any other number — do not compute differences, totals or remainders (write "the remaining skills", not "the remaining 2 skills").
 - Plain, specific, no hype words ("amazing", "perfect"), max 45 words total.
 
 SOURCE SUMMARY:
@@ -190,6 +191,7 @@ Schema:
 
 Rules:
 - ONLY include fields the user's query actually mentions (unknown fields are dropped downstream anyway).
+- Seniority words: "fresher", "freshers", "graduate", "trainee", "junior", "0-1 years", "2026 batch", "campus" -> experience_level "entry" (and leave them out of keywords); "intern"/"internship" -> employment_type "internship".
 - Use ONLY the enum values listed. Never invent fields.
 
 USER QUERY:

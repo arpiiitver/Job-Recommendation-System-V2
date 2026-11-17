@@ -189,6 +189,39 @@ def effective_weights(
     return weights, _note_for(weights, n_events, g), shrink
 
 
+# Career-direction shift: a seeker who states target roles / a target family
+# is (often) changing direction, so past seniority in *another* domain should
+# count a little less and alignment with the stated direction a little more.
+DIRECTION_SHIFT = 0.05
+DIRECTION_EXPERIENCE_FLOOR = 0.05
+
+
+def apply_direction_shift(
+    weights: dict[str, float],
+    *,
+    has_direction: bool,
+) -> tuple[dict[str, float], str | None]:
+    """Move up to 0.05 of weight experience → interest when a direction is set.
+
+    Bounded (experience never drops below 0.05), renormalised, and reported
+    as a plain-language note so the change is never silent.
+    """
+    if not has_direction:
+        return weights, None
+    w = dict(weights)
+    movable = max(0.0, min(DIRECTION_SHIFT, w.get("experience", 0.0) - DIRECTION_EXPERIENCE_FLOOR))
+    if movable <= 0:
+        return weights, None
+    w["experience"] = w.get("experience", 0.0) - movable
+    w["interest"] = w.get("interest", 0.0) + movable
+    total = sum(w.values()) or 1.0
+    w = {k: v / total for k, v in w.items()}
+    return w, (
+        "Career direction set: your target roles count more, and past "
+        "seniority a little less, in this ranking."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Weight update (multiplicative, bounded, renormalised)
 # ---------------------------------------------------------------------------

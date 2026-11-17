@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import get_current_user, require_roles
 from app.api.jobs import _format_job_response
 from app.core.db import get_db
+from app.core.rate_limit import rate_limited
 from app.models.application import Application
 from app.models.company import Company
 from app.models.enums import ApplicationStatus, JobStatus, UserRole
@@ -992,3 +993,78 @@ def duplicate_posting(
 
     created = _owned_posting(db, current_user, copy.id)
     return _format_job_response(created, applicant_count=0)
+
+
+# --------------------------------------------------------------------------- #
+# AI shortlist: role description → ranked, explained candidates
+# --------------------------------------------------------------------------- #
+from pydantic import BaseModel as _BaseModel, Field as _Field  # noqa: E402
+
+
+class ShortlistRequest(_BaseModel):
+    jd_text: str | None = _Field(default=None, max_length=20000)
+    posting_id: UUID | None = None
+    title: str | None = _Field(default=None, max_length=200)
+    location: str | None = _Field(default=None, max_length=150)
+    top_k: int = _Field(default=10, ge=1, le=30)
+
+
+class ShortlistOut(_BaseModel):
+    title: str
+    seniority: str
+    years_min: float | None
+    required_skills: list[str]
+    preferred_skills: list[str]
+    structured_by: str
+    dropped_llm_skills: list[str]
+    pool_size: int
+    candidates: list[dict]
+    privacy_note: str
+
+
+@router.post("/shortlist", response_model=ShortlistOut, dependencies=[Depends(rate_limited("shortlist"))])
+def ai_shortlist(
+    payload: ShortlistRequest,
+    current_user: EmployerOnly,
+    db: Annotated[Session, Depends(get_db)],
+) -> ShortlistOut:
+    """Paste a role description (or pick a posting) → ranked candidates with
+    "why they fit / what's missing".  Pool: seekers who opted in to recruiter
+    discovery, plus the posting's own applicants.  Scores come from the same
+    deterministic engine seekers see; the LLM only structures the JD and
+    polishes explanation wording (validated)."""
+    from app.services.talent_shortlist import shortlist
+
+    posting = None
+    jd_text = (payload.jd_text or "").strip()
+    title = payload.title
+    location = payload.location
+    if payload.posting_id is not None:
+        posting = _owned_posting(db, current_user, payload.posting_id)
+        if not jd_text:
+            jd_text = "\n".join(p for p in (posting.title, posting.description, posting.requirements or "") if p)
+            title = title or posting.title
+            location = location or posting.location
+    if len(jd_text) < 40:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide a role description (at least 40 characters) or a posting_id.",
+        )
+
+    result = shortlist(db, current_user, jd_text, title=title, location=location, posting=posting, top_k=payload.top_k)
+    spec = result.spec
+    return ShortlistOut(
+        title=spec.title,
+        seniority=spec.level.value,
+        years_min=spec.years_min,
+        required_skills=spec.required,
+        preferred_skills=spec.preferred,
+        structured_by=spec.structured_by,
+        dropped_llm_skills=spec.dropped_llm_skills,
+        pool_size=result.pool_size,
+        candidates=result.candidates,
+        privacy_note=(
+            "Only candidates who opted in to recruiter discovery (or applied to this posting) appear. "
+            "Contact details are shown for applicants only."
+        ),
+    )

@@ -50,3 +50,14 @@ def _no_live_provider(monkeypatch):
         raise RuntimeError("live Adzuna provider is blocked in tests")
 
     monkeypatch.setattr(live_jobs_pkg, "fetch_adzuna_search", _blocked)
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limits():
+    """The suite fires many requests from one client; rate limits are unit-tested
+    separately (tests/test_rate_limit.py)."""
+    settings = get_settings()
+    previous = settings.rate_limit_llm_per_minute
+    settings.rate_limit_llm_per_minute = 0
+    yield
+    settings.rate_limit_llm_per_minute = previous

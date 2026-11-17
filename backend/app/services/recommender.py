@@ -60,6 +60,7 @@ from app.services.scoring import (
     JobSkillReq,
     ScoreResult,
     experience_match,
+    role_alignment,
     score_pair,
     skill_match,
 )
@@ -178,6 +179,34 @@ def generate_candidates(db: Session, profile: Profile, limit: int) -> list[Job]:
     except Exception:
         log.exception("skill candidate leg failed; continuing without it")
 
+    # Leg 4: career direction — one short FTS query per typed target role
+    # (websearch_to_tsquery ANDs its words, so roles are queried separately
+    # rather than appended to the long profile text of leg 2).  This is what
+    # lets a role/domain switcher's feed reach postings their resume never
+    # mentions.
+    try:
+        roles = _dedupe_roles(getattr(profile, "career_interests", None))[:3]
+        role_ids: list[UUID] = []
+        seen_ids: set[UUID] = set()
+        for role in roles:
+            rows = db.execute(
+                text(
+                    "SELECT id FROM jobs WHERE status = :st "
+                    "AND search_vector @@ websearch_to_tsquery('english', :q) "
+                    "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('english', :q)) DESC, id "
+                    "LIMIT :k"
+                ),
+                {"st": JobStatus.PUBLISHED.name, "q": role, "k": per_leg},
+            ).all()
+            for row in rows:
+                if row[0] not in seen_ids:
+                    seen_ids.add(row[0])
+                    role_ids.append(row[0])
+        if role_ids:
+            legs.append(role_ids)
+    except Exception:
+        log.exception("target-role candidate leg failed; continuing without it")
+
     ordered_ids = _rrf(legs) if legs else []
     if not ordered_ids:
         # Fallback: everything published, newest first (previous behavior)
@@ -273,9 +302,12 @@ class _ProfileContext:
         self.seeker_salary_max = to_usd(
             profile.expected_salary_max, profile.expected_salary_currency
         )
-        self.interest_skills = {
-            str(i).lower().strip() for i in (profile.career_interests or [])
-        }
+        # career_interests are free-text target roles/domains (career
+        # direction form) — matched against title/skills/text by
+        # scoring.role_alignment, not treated as a skill-set Jaccard (which
+        # scored 0 for every job whose skills didn't literally equal a role).
+        self.target_roles = _dedupe_roles(profile.career_interests)
+        self.interest_skills: set[str] = set()
 
         try:
             target = profile.target_family
@@ -355,7 +387,31 @@ class _ProfileContext:
             job_family=job_family,
             family_graph_distance=distance,
             seeker_interest_skills=self.interest_skills,
+            seeker_target_roles=self.target_roles,
+            job_title=job.title,
+            job_text=_job_match_text(job, job_family) if self.target_roles else None,
         )
+
+
+def _dedupe_roles(raw: object) -> list[str]:
+    seen: set[str] = set()
+    roles: list[str] = []
+    for item in raw or []:  # type: ignore[union-attr]
+        text = str(item or "").strip()
+        if text and text.lower() not in seen:
+            seen.add(text.lower())
+            roles.append(text)
+    return roles
+
+
+def _job_match_text(job: Job, family_name: str | None) -> str:
+    """Short lowercase text a target domain can be found in (bounded cost)."""
+    parts = [job.title or "", family_name or "", (job.description or "")[:1500]]
+    company = getattr(job, "company", None)
+    industry = getattr(company, "industry", None) if company is not None else None
+    if industry:
+        parts.append(str(industry))
+    return " ".join(p for p in parts if p).lower()
 
 
 def _job_age_days(job: Job, now: datetime) -> float:
@@ -425,6 +481,7 @@ class ContentRecommender:
         ensure_job_embeddings(jobs)
 
         scored: list[tuple[Job, ScoreResult, RankOutcome]] = []
+        role_hits: dict[str, str] = {}   # job id -> target role it matched
         now = datetime.now(timezone.utc)
         try:
             projects = list(profile.project_rows or [])
@@ -435,6 +492,9 @@ class ContentRecommender:
             if affinities:
                 inputs.seeker_skill_affinities = dict(affinities)
             result = score_pair(inputs, weights=weights)
+            hit = role_alignment(inputs)
+            if hit is not None:
+                role_hits[str(job.id)] = hit[1]
             features = build_features(
                 inputs,
                 result,
@@ -495,6 +555,7 @@ class ContentRecommender:
                 result,
                 family=family,
                 display_score=outcome.final,
+                target_role=role_hits.get(str(job.id)),
                 # LLM-polish only the top-N — a 20-item feed firing 20
                 # requests trips the provider per-minute rate limit (429).
                 polish=(index < settings.explain_polish_top_n),
@@ -528,6 +589,7 @@ class ContentRecommender:
                     content_similarity_score=result.components.get("semantic", 0.0),
                     matched_skills=list(result.skill_detail.matched),
                     missing_skills=list(result.skill_detail.missing_required),
+                    transferable_skills=list(result.skill_detail.transferable),
                     match_reasons=reasons,
                     explanation=contract.as_dict(),
                     readiness=readiness_from_score(outcome.final),
@@ -590,6 +652,7 @@ class ContentRecommender:
                     content_similarity_score=0.0,
                     matched_skills=[],
                     missing_skills=list(detail.missing_required),
+                    transferable_skills=list(detail.transferable),
                     match_reasons=[COLD_START_REASON],
                     explanation=None,
                     readiness=readiness_from_score(score),

@@ -15,6 +15,7 @@ import {
   FileText,
   MapPin,
   PlusCircle,
+  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -103,7 +104,14 @@ export default function HiringOverviewPage() {
             here&apos;s how your postings are doing.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/hiring/shortlist"
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-300 hover:bg-teal-500/20 transition-colors"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI shortlist
+          </Link>
           <Link
             href="/hiring/postings"
             className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors"

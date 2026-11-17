@@ -3,6 +3,10 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Development-only default; app startup refuses it when ENVIRONMENT=production.
+DEV_JWT_SECRET = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -15,7 +19,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     database_url: str
     cors_origins: str = "http://localhost:3000"
-    jwt_secret_key: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+    jwt_secret_key: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
@@ -31,6 +35,25 @@ class Settings(BaseSettings):
     # degrades to its deterministic/template fallback (never a 500).
     llm_enabled: bool = True
     llm_timeout_seconds: int = 30
+    # SDK-level retries (exponential backoff on 408/409/429/5xx).
+    llm_max_retries: int = 2
+    # Gemini transport: "openai_compat" (default — Google's OpenAI-compatible
+    # endpoint: JSON mode + native tool calling) | "sdk" (legacy, deprecated
+    # google-generativeai; JSON routes only, no agent).
+    gemini_transport: str = "openai_compat"
+
+    # ---- Career Copilot agent ----
+    agent_enabled: bool = True
+    agent_max_steps: int = 6              # tool-calling rounds per user turn
+    agent_history_messages: int = 16      # raw messages replayed each turn
+    agent_summarize_after: int = 24       # older messages fold into a summary
+    agent_memory_top_k: int = 8           # long-term memories injected per turn
+    agent_temperature: float = 0.2
+
+    # ---- Abuse / cost guardrails ----
+    # per-user requests/minute on LLM-backed routes (copilot, shortlist,
+    # NL search, resume optimizer); 0 disables
+    rate_limit_llm_per_minute: int = 20
     # P6 (§15): EXPLAIN_LLM=true → LLM rewrites explanation prose (never
     # numbers — digit-multiset validator discards any drift). Default off.
     explain_llm: bool = False
@@ -49,7 +72,7 @@ class Settings(BaseSettings):
     # ---- Embeddings (plan §4/§13) ----
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     # "auto" = MiniLM if importable, else deterministic hashing fallback
-    embedding_backend: str = "auto"  # "auto" | "minilm" | "hashing"
+    embedding_backend: str = "auto"  # "auto" | "minilm" | "onnx" | "hashing"
 
     # ---- Recommender (plan §4/§6) ----
     recommender_strategy: str = "deterministic"  # "deterministic" | "ltr_blend" | "ltr_full"
@@ -113,6 +136,10 @@ class Settings(BaseSettings):
     adzuna_country: str = "in"
     ingest_http_timeout: int = 20
     ingest_delay_seconds: float = 0.5       # polite rate limit between requests
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in ("production", "prod")
 
     @property
     def cors_origin_list(self) -> list[str]:

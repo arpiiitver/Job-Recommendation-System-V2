@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,7 +20,9 @@ from app.core.db import get_db
 from app.models.job_family import JobFamily
 from app.models.skill import Skill
 from app.models.user import User
+from app.schemas.skill_gap import DirectionGapResponse
 from app.services.career_discovery import discover
+from app.services.skill_disparity import direction_gaps
 from app.services.recommender import _ProfileContext
 from app.services.skill_graph import fetch_graph
 
@@ -91,3 +93,20 @@ def discover_careers(
         preset_names=PRESET_FAMILIES,
     )
     return DiscoverResponse(**result)
+
+
+@router.get("/direction-gap", response_model=DirectionGapResponse)
+def get_direction_gap(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    live: Annotated[bool, Query(description="Also sample live Adzuna postings")] = True,
+) -> DirectionGapResponse:
+    """What each target role/domain (career-direction form) demands vs. you.
+
+    For role/domain switchers: retrieves postings representing each target
+    (platform FTS ∪ KNN, plus live Adzuna), counts how often each skill is
+    asked for, and classifies it as have / transferable / missing.  Pure
+    counting — no LLM, no fabricated numbers.
+    """
+    profile = load_profile(db, current_user.id)
+    return direction_gaps(db, profile, include_live=live)

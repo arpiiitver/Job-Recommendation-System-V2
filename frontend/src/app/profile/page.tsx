@@ -3,7 +3,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import DirectionGap from "@/components/direction-gap";
 import {
+  getBrowserApiBaseUrl,
   getCareerFamilies,
   getMyProfile,
   getSkills,
@@ -93,6 +95,8 @@ export default function ProfilePage() {
   const [careerInterestInput, setCareerInterestInput] = useState("");
   const [extraSkillSearch, setExtraSkillSearch] = useState("");
   const [extraSkillSuggestions, setExtraSkillSuggestions] = useState<Skill[]>([]);
+  // Bumped after each save so the direction-gap panel re-fetches (targets change on save).
+  const [directionGapVersion, setDirectionGapVersion] = useState(0);
 
   // Education & Experience
   const [education, setEducation] = useState<EducationItem[]>([]);
@@ -390,6 +394,7 @@ export default function ProfilePage() {
       setProfile(res);
       setTargetFamily(res.target_family || "");
       setCareerInterests(res.career_interests || []);
+      setDirectionGapVersion((v) => v + 1);
       setMessage({ type: "success", text: "Profile updated successfully!" });
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -537,7 +542,7 @@ export default function ProfilePage() {
 
               {profile?.resume_url && (
                 <a
-                  href={`http://localhost:8000${profile.resume_url}`}
+                  href={`${getBrowserApiBaseUrl()}${profile.resume_url}`}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
@@ -904,6 +909,9 @@ export default function ProfilePage() {
             </p>
           </div>
         </section>
+
+        {/* What each saved career-direction target demands vs. your skills */}
+        <DirectionGap token={token} refreshKey={directionGapVersion} />
 
         {/* Work Experience */}
         <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-6 backdrop-blur">

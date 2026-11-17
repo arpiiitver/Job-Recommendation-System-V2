@@ -47,6 +47,8 @@ from app.services.ingest import (
 )
 from app.services.ingest.fetch import fetch_adzuna_search
 from app.services import location_hint
+from app.models.enums import ExperienceLevel
+from app.services.seniority import classify_job, level_tier
 
 log = logging.getLogger(__name__)
 
@@ -136,8 +138,8 @@ def _map_posting(raw: dict, *, country: str | None = None) -> dict | None:
 
     raw_location = str(raw.get("location") or "").strip()
     location = parse_location(raw_location) or raw_location or "Not specified"
-    years = parse_years(description)
-    level = map_seniority(title, years)
+    guess = classify_job(title, description)
+    level = guess.level
     remote = bool(raw.get("is_remote")) or detect_remote(title, description, location)
     employment = detect_employment_type(f"{title} {description[:400]}")
 
@@ -159,9 +161,19 @@ def _map_posting(raw: dict, *, country: str | None = None) -> dict | None:
         "created_at": _parse_posted_at(raw.get("posted_at")),
         "employment_type": employment,
         "experience_level": level,
+        "level_explicit": guess.explicit,
+        "level_reason": guess.reason,
         "skills": skills,
         "family": family,
     }
+
+
+# Adzuna `what_or` words that lean a fetch toward one seniority band.
+_LEVEL_OR: dict[ExperienceLevel, str] = {
+    ExperienceLevel.ENTRY: "fresher freshers junior trainee graduate intern entry",
+    ExperienceLevel.SENIOR: "senior sr experienced",
+    ExperienceLevel.LEAD: "lead principal staff architect",
+}
 
 
 def search_postings(
@@ -172,8 +184,15 @@ def search_postings(
     page: int = 1,
     page_size: int = 20,
     sort_by: str | None = None,
+    level: ExperienceLevel | None = None,
 ) -> tuple[list[dict], int]:
     """Live Adzuna search → (normalized postings, total match count).
+
+    `level` (e.g. ENTRY for "fresher" searches): a second, seniority-leaning
+    fetch (Adzuna `what_or`) is merged with the plain one, every posting is
+    classified (``seniority.classify_job``), explicit mismatches are dropped
+    and confirmed matches are ranked first.  Unknown-seniority postings stay,
+    after the confirmed ones.
 
     Never raises: provider/network failures log and return ([], 0) so the
     caller degrades to platform postings alone.  `country` selects the Adzuna
@@ -190,12 +209,13 @@ def search_postings(
         page,
         page_size,
         sort_by,
+        level.value if level is not None else None,
     )
     cached = _search_cache.get(key)
     if cached is not None and time.monotonic() - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1], cached[2]
 
-    def _fetch(what: str) -> tuple[list[dict], int]:
+    def _fetch(what: str, what_or: str | None = None) -> tuple[list[dict], int]:
         kwargs = {
             "page": page,
             "results_per_page": page_size,
@@ -205,6 +225,8 @@ def search_postings(
         }
         if country_code:
             kwargs["country"] = country_code
+        if what_or:
+            kwargs["what_or"] = what_or
         return fetch_adzuna_search(what, **kwargs)
 
     try:
@@ -225,6 +247,11 @@ def search_postings(
             rescue_query = " ".join(meaningful).strip()
             if rescue_query and rescue_query != query and rescue_query != " ".join(tokens[:3]):
                 rows, total = _fetch(rescue_query)
+        if level is not None and _LEVEL_OR.get(level):
+            # seniority-leaning fetch first, then the plain rows (deduped below)
+            lean_rows, lean_total = _fetch(query, _LEVEL_OR[level])
+            rows = list(lean_rows) + list(rows)
+            total = max(total, lean_total)
     except Exception:  # noqa: BLE001 - live leg must never break the page
         log.warning("live Adzuna search failed for %r; serving platform-only", query)
         return [], 0
@@ -239,6 +266,13 @@ def search_postings(
             continue
         seen.add(posting["external_id"])
         postings.append(posting)
+
+    if level is not None:
+        tiered = [
+            (level_tier(p["experience_level"], p.get("level_explicit", True), level), i, p)
+            for i, p in enumerate(postings)
+        ]
+        postings = [p for tier, _i, p in sorted(tiered, key=lambda t: (t[0], t[1])) if tier < 2][:page_size]
 
     if len(_search_cache) >= _CACHE_MAX_ENTRIES:
         _search_cache.clear()
@@ -271,6 +305,8 @@ def to_response(
         requirements=None,
         employment_type=posting["employment_type"],
         experience_level=posting["experience_level"],
+        level_explicit=posting.get("level_explicit"),
+        level_reason=posting.get("level_reason"),
         location=posting["location"],
         is_remote=posting["is_remote"],
         salary_min=posting["salary_min"],
@@ -369,10 +405,16 @@ def profile_live_query(profile: Profile) -> str:
     `_profile_query_text` (built for Postgres FTS) is far too rich for
     Adzuna: its `what` effectively ANDs every term, so bio prose or a
     location string collapses recall to zero.  Keep one tight candidate —
-    target role → headline → top skills — capped at three words (the same
+    typed target role → target family → headline → top skills — capped at three words (the same
     bound as the proven ingest rotation queries).
     """
     candidates: list[str] = []
+    # Explicit target role typed in the career-direction form wins: it is the
+    # seeker's own words for where they want to go (switchers especially).
+    for role in getattr(profile, "career_interests", None) or []:
+        if str(role).strip():
+            candidates.append(str(role).strip())
+            break
     try:
         target = getattr(profile, "target_family", None)
         if target is not None and target.name:

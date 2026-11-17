@@ -13,7 +13,14 @@ import {
   ApplicationStats,
   ApplicationStatus,
   CompanyDetail,
+  CopilotChatResponse,
+  CopilotConversation,
+  CopilotConversationSummary,
+  CopilotMemory,
+  CopilotMemoryKind,
+  CopilotStatus,
   ConfigSaveResponse,
+  DirectionGapResponse,
   DiscoverResponse,
   DuplicatesResponse,
   EmployerApplication,
@@ -53,6 +60,8 @@ import {
   RoadmapResponse,
   SimulateRequest,
   SimulateResponse,
+  ShortlistRequest,
+  ShortlistResponse,
   SimulationListResponse,
   Skill,
   StepCompleteResponse,
@@ -385,6 +394,22 @@ export async function getPostingTalent(jobId: string, token: string): Promise<Po
   return authedJson(`${getBrowserApiBaseUrl()}/api/v1/employer/postings/${jobId}/talent`, token);
 }
 
+// ---------------- Employer API: AI shortlist ---------------- //
+
+/**
+ * Rank opted-in candidates (plus the posting's applicants) against a pasted
+ * role description or one of the employer's postings. Rate limited (429).
+ */
+export async function aiShortlist(
+  payload: ShortlistRequest,
+  token: string,
+): Promise<ShortlistResponse> {
+  return authedJson(`${getBrowserApiBaseUrl()}/api/v1/employer/shortlist`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---------------- Employer API (E3: insights) ---------------- //
 
 /** JD health, salary benchmark and supply/demand gaps for one posting. */
@@ -562,6 +587,18 @@ export async function getCareerFamilies(token: string): Promise<string[]> {
     token,
   );
   return data.families;
+}
+
+/**
+ * What each target role/domain from the career-direction form demands vs.
+ * the seeker's skills. `live` also samples live (Adzuna) postings.
+ */
+export async function getDirectionGap(
+  token: string,
+  live: boolean = true,
+): Promise<DirectionGapResponse> {
+  const base = getBrowserApiBaseUrl();
+  return authedJson(`${base}/api/v1/careers/direction-gap?live=${live}`, token);
 }
 
 // ---------------- Phase 4: Feedback · Preferences · NL · Resume · Projects · Tracker ---------------- //
@@ -1011,6 +1048,83 @@ export async function markAllNotificationsRead(
   return authedJson(`${base}/api/v1/notifications/read-all`, token, {
     method: "POST",
   });
+}
+
+// ---------------- Career Copilot (agent chat + memory) ---------------- //
+
+/** For endpoints that answer 204 No Content. */
+async function authedVoid(url: string, token: string, init: RequestInit = {}): Promise<void> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}`, ...(init.headers || {}) },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `Request failed (${res.status})` }));
+    throw new Error(
+      typeof err.detail === "string" ? err.detail : `Request failed (${res.status})`,
+    );
+  }
+}
+
+const copilotBase = () => `${getBrowserApiBaseUrl()}/api/v1/copilot`;
+
+export async function getCopilotStatus(token: string): Promise<CopilotStatus> {
+  return authedJson(`${copilotBase()}/status`, token);
+}
+
+export async function copilotChat(
+  payload: { message: string; conversation_id?: string },
+  token: string,
+): Promise<CopilotChatResponse> {
+  return authedJson(`${copilotBase()}/chat`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function copilotDigest(token: string): Promise<CopilotChatResponse> {
+  return authedJson(`${copilotBase()}/digest`, token, { method: "POST" });
+}
+
+export async function getCopilotConversations(
+  token: string,
+): Promise<CopilotConversationSummary[]> {
+  return authedJson(`${copilotBase()}/conversations`, token);
+}
+
+export async function getCopilotConversation(
+  conversationId: string,
+  token: string,
+): Promise<CopilotConversation> {
+  return authedJson(`${copilotBase()}/conversations/${conversationId}`, token);
+}
+
+export async function deleteCopilotConversation(
+  conversationId: string,
+  token: string,
+): Promise<void> {
+  return authedVoid(`${copilotBase()}/conversations/${conversationId}`, token, {
+    method: "DELETE",
+  });
+}
+
+export async function getCopilotMemories(token: string): Promise<CopilotMemory[]> {
+  return authedJson(`${copilotBase()}/memories`, token);
+}
+
+export async function addCopilotMemory(
+  payload: { content: string; kind: CopilotMemoryKind },
+  token: string,
+): Promise<CopilotMemory> {
+  return authedJson(`${copilotBase()}/memories`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCopilotMemory(memoryId: string, token: string): Promise<void> {
+  return authedVoid(`${copilotBase()}/memories/${memoryId}`, token, { method: "DELETE" });
 }
 
 // ---------------- Generic API Client (Supports TanStack Query & direct use) ---------------- //

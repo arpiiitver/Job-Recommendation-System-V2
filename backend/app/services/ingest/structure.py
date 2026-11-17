@@ -90,6 +90,27 @@ def _preferred_marker_index(text_lower: str) -> int:
     return min(hits) if hits else -1
 
 
+# Skill names that are also everyday English words. Lower-cased matching turns
+# "go-to-market" into Go and "swift onboarding" into Swift, which then shows up
+# as a phantom "most-demanded gap". These must match with their canonical
+# capitalisation and not as the first word of a sentence ("Go above and beyond").
+AMBIGUOUS_SURFACES = frozenset(
+    {"go", "swift", "rust", "dart", "express", "ember", "chef", "puppet", "spring", "excel", "access", "shell"}
+)
+
+
+def _ambiguous_hit(surface: str, canonical: str, original: str) -> re.Match[str] | None:
+    forms = {canonical, surface.upper()} if surface.lower() == canonical.lower() else {surface}
+    for form in forms:
+        pattern = rf"(?<![A-Za-z0-9+.#]){re.escape(form)}(?![A-Za-z0-9+#]|\.[A-Za-z])"
+        for m in re.finditer(pattern, original):
+            before = original[: m.start()].rstrip(" \t\"'(*-•")
+            if not before or before[-1] in ".!?:\n":
+                continue  # sentence-initial: likely the English word
+            return m
+    return None
+
+
 def extract_skills(
     title: str, description: str, pairs: list[tuple[str, str]]
 ) -> list[tuple[str, bool]]:
@@ -100,15 +121,19 @@ def extract_skills(
     (stage 4 --llm) only contributes *extra surfaces* to this same matcher,
     never direct writes.
     """
-    text = f"{title}\n{description}".lower()
+    original = f"{title}\n{description}"
+    text = original.lower()
     marker = _preferred_marker_index(text)
     out: dict[str, tuple[str, bool]] = {}
     for surface, canonical in pairs:
         surface = surface.lower()
         if len(surface) < 2:
             continue
-        pattern = rf"(?<![a-z0-9+.#]){re.escape(surface)}(?![a-z0-9+.#])"
-        match = re.search(pattern, text)
+        if surface in AMBIGUOUS_SURFACES:
+            match = _ambiguous_hit(surface, canonical, original)
+        else:
+            pattern = rf"(?<![a-z0-9+.#]){re.escape(surface)}(?![a-z0-9+.#])"
+            match = re.search(pattern, text)
         if not match:
             continue
         required = not (marker != -1 and match.start() > marker)

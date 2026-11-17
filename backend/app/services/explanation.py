@@ -69,6 +69,7 @@ def build_explanation(
     family: str | None = None,
     display_score: float | None = None,
     polish: bool = True,
+    target_role: str | None = None,
 ) -> ExplanationContract:
     """Build the §12 contract from a ScoreResult — numbers verbatim, no recomputation.
 
@@ -84,6 +85,10 @@ def build_explanation(
     detail = result.skill_detail
 
     # Strengths from component rules (§12 mapping)
+    if target_role:
+        # career-direction hit (scoring.role_alignment) — told first so a
+        # switcher sees *why* an off-resume role surfaced in their feed
+        strengths.append(f"Matches your target direction: {target_role}")
     if detail.matched:
         top = ", ".join(detail.matched[:3])
         strengths.append(f"Skills overlap: {top}")

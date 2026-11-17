@@ -3,12 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import api_router
-from app.core.config import get_settings
+from app.core.config import DEV_JWT_SECRET, get_settings
 from app.services.llm import LlmStrictError
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if settings.is_production:
+        # Fail fast on unsafe production config instead of serving with it.
+        if settings.jwt_secret_key == DEV_JWT_SECRET or len(settings.jwt_secret_key) < 32:
+            raise RuntimeError("JWT_SECRET_KEY must be set to a unique value of 32+ chars in production.")
+        if any("localhost" in o for o in settings.cors_origin_list):
+            import logging
+
+            logging.getLogger(__name__).warning("CORS_ORIGINS still contains localhost in production.")
     application = FastAPI(
         title="JobRec API",
         description="Job recommendation platform API",

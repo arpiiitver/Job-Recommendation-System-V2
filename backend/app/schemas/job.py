@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import EmploymentType, ExperienceLevel, JobStatus
+from app.schemas.skill_gap import SkillGapSummary
 from app.schemas.user import CompanySummary
 
 
@@ -101,6 +102,10 @@ class JobDetailResponse(BaseModel):
     matched_skills: list[str] = []
     missing_skills: list[str] = []
     transferable_skills: list[str] = []
+    # Seniority evidence: False = no signal in the posting (level defaulted),
+    # with a human-readable reason ("posting says 'Freshers can apply'")
+    level_explicit: bool | None = None
+    level_reason: str | None = None
     # None = no profile skills (or the posting lists no skills) — no preview.
     skill_match_score: float | None = None
 
@@ -111,6 +116,8 @@ class JobListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+    # Skill disparity across this page of results (signed-in seekers only)
+    skill_gap_summary: SkillGapSummary | None = None
 
 
 class JobNlResponse(BaseModel):
@@ -121,3 +128,4 @@ class JobNlResponse(BaseModel):
     mode: str  # "llm" | "fts" (deterministic degrade)
     parsed_filters: dict[str, Any] = {}
     q: str
+    skill_gap_summary: SkillGapSummary | None = None

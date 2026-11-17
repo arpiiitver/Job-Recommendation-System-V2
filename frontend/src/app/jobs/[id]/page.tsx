@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { api, getJobDetail, getMyApplications, saveJob } from "@/lib/api";
 import { JobDetail } from "@/lib/types";
 import { formatSalary } from "@/lib/format";
+import LevelBadge from "@/components/level-badge";
 import {
   AlertCircle,
   ArrowLeft,
@@ -197,9 +198,12 @@ export default function JobDetailPage() {
                   Remote
                 </span>
               )}
-              <span className="rounded bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-300 capitalize">
-                {job.experience_level} Level
-              </span>
+              <LevelBadge
+                level={job.experience_level}
+                explicit={job.level_explicit}
+                reason={job.level_reason}
+                size="md"
+              />
               <span className="rounded bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-300 capitalize">
                 {job.employment_type.replace("_", "-")}
               </span>

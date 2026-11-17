@@ -1,0 +1,23 @@
+{"id": "nl-01", "q": "remote python developer jobs", "expected": {"remote_only": true, "skills": ["Python"], "keywords_any": ["python", "developer"]}}
+{"id": "nl-02", "q": "senior data scientist in Bangalore", "expected": {"location": "Bangalore", "experience_level": "senior", "keywords_any": ["data scientist", "data science"]}}
+{"id": "nl-03", "q": "entry level frontend react internship in Pune", "expected": {"location": "Pune", "experience_level": "entry", "employment_type": "internship", "skills": ["React"]}}
+{"id": "nl-04", "q": "contract devops roles with kubernetes and terraform", "expected": {"employment_type": "contract", "skills": ["Kubernetes", "Terraform"], "keywords_any": ["devops"]}}
+{"id": "nl-05", "q": "backend engineer go postgres salary above 2000000", "expected": {"skills": ["Go", "PostgreSQL"], "min_salary": 2000000, "keywords_any": ["backend"]}}
+{"id": "nl-06", "q": "part time content writer work from home", "expected": {"employment_type": "part_time", "remote_only": true, "keywords_any": ["content writer", "writer"]}}
+{"id": "nl-07", "q": "machine learning engineer pytorch mid level", "expected": {"experience_level": "mid", "skills": ["PyTorch"], "keywords_any": ["machine learning"]}}
+{"id": "nl-08", "q": "jobs in Hyderabad for java spring boot developers", "expected": {"location": "Hyderabad", "skills": ["Java", "Spring Boot"]}}
+{"id": "nl-09", "q": "lead product manager fintech", "expected": {"experience_level": "lead", "keywords_any": ["product manager"]}}
+{"id": "nl-10", "q": "full time ui ux designer figma in Mumbai", "expected": {"employment_type": "full_time", "location": "Mumbai", "skills": ["Figma"]}}
+{"id": "nl-11", "q": "remote typescript node.js roles paying at least 1500000", "expected": {"remote_only": true, "skills": ["TypeScript", "Node.js"], "min_salary": 1500000}}
+{"id": "nl-12", "q": "data analyst sql tableau Delhi", "expected": {"location": "Delhi", "skills": ["SQL", "Tableau"], "keywords_any": ["data analyst"]}}
+{"id": "nl-13", "q": "android developer kotlin", "expected": {"skills": ["Kotlin"], "keywords_any": ["android"]}}
+{"id": "nl-14", "q": "temporary customer support jobs in Chennai", "expected": {"employment_type": "temporary", "location": "Chennai", "keywords_any": ["customer support"]}}
+{"id": "nl-15", "q": "executive level cto position", "expected": {"experience_level": "executive", "keywords_any": ["cto"]}}
+{"id": "nl-16", "q": "aws cloud engineer remote senior", "expected": {"remote_only": true, "experience_level": "senior", "skills": ["AWS"]}}
+{"id": "nl-17", "q": "graduate trainee software jobs Noida", "expected": {"location": "Noida", "experience_level": "entry"}}
+{"id": "nl-18", "q": "cybersecurity analyst", "expected": {"keywords_any": ["cybersecurity", "security analyst"]}}
+{"id": "nl-19", "q": "django rest api developer internship remote", "expected": {"employment_type": "internship", "remote_only": true, "skills": ["Django"]}}
+{"id": "nl-20", "q": "qa automation selenium mid level Gurgaon", "expected": {"location": "Gurgaon", "experience_level": "mid", "skills": ["Selenium"]}}
+{"id": "nl-21", "q": "fresher python developer jobs in Pune", "expected": {"location": "Pune", "experience_level": "entry", "skills": ["Python"]}}
+{"id": "nl-22", "q": "jobs for 2026 batch freshers in Bangalore", "expected": {"location": "Bangalore", "experience_level": "entry"}}
+{"id": "nl-23", "q": "trainee data analyst openings", "expected": {"experience_level": "entry", "keywords_any": ["data analyst", "analyst"]}}

@@ -7,6 +7,7 @@ from app.api.alerts import router as alerts_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.careers import router as careers_router
+from app.api.copilot import router as copilot_router
 from app.api.employer import router as employer_router
 from app.api.feedback import router as feedback_router
 from app.api.gap import router as gap_router
@@ -54,3 +55,5 @@ api_router.include_router(alerts_router)
 api_router.include_router(notifications_router)
 # ---- Phase E0 (employer experience): company profile + posting lifecycle ----
 api_router.include_router(employer_router)
+# ---- Career Copilot: tool-using, memory-backed job-search agent ----
+api_router.include_router(copilot_router)

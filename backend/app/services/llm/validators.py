@@ -68,6 +68,38 @@ def validate_spans(spans: Sequence[dict[str, Any]], source: str) -> list[str]:
     return problems
 
 
+def reanchor_spans(spans: Sequence[dict[str, Any]], source: str) -> list[dict[str, Any]]:
+    """Recompute offsets for verbatim quotes; leave everything else untouched.
+
+    LLMs copy quotes reliably but count characters badly, so a correct quote
+    often arrives with wrong [start:end].  When the quote occurs verbatim in
+    the source, its offsets are reset to the occurrence nearest the proposed
+    start.  The quote itself is never altered, and a quote that is not in the
+    source keeps its (bad) offsets, so ``validate_spans`` still rejects it.
+    """
+    fixed: list[dict[str, Any]] = []
+    for span in spans or []:
+        span = dict(span or {})
+        quote = str(span.get("quote") or "")
+        if quote and quote in source:
+            start = span.get("start")
+            ok = (
+                isinstance(start, int)
+                and isinstance(span.get("end"), int)
+                and source[start : span["end"]] == quote
+            )
+            if not ok:
+                hint = start if isinstance(start, int) else 0
+                positions, i = [], source.find(quote)
+                while i != -1:
+                    positions.append(i)
+                    i = source.find(quote, i + 1)
+                best = min(positions, key=lambda p: abs(p - hint))
+                span["start"], span["end"] = best, best + len(quote)
+        fixed.append(span)
+    return fixed
+
+
 def validate_skill_tokens(
     skills: Sequence[str],
     source: str,

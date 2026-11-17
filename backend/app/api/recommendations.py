@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.recommendation import RecommendationFeedResponse
 from app.services import live_jobs, personalization
 from app.services.recommender import ContentRecommender, generate_candidates
+from app.services.skill_disparity import summarize_items
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,13 @@ def get_recommendation_feed(
     weights, m4_note, _shrink = personalization.effective_weights(
         db, profile.user_id
     )
+    weights, direction_note = personalization.apply_direction_shift(
+        weights,
+        has_direction=bool(profile.career_interests)
+        or profile.target_job_family_id is not None,
+    )
+    if direction_note:
+        m4_note = f"{m4_note} {direction_note}" if m4_note else direction_note
     affinities = personalization.load_affinities(db, profile.id)
     feed = ContentRecommender.recommend_jobs(
         profile=profile,
@@ -125,5 +133,11 @@ def get_recommendation_feed(
         db.commit()
     except Exception:
         db.rollback()
+
+    # Skill disparity across the whole feed (banner above the cards)
+    try:
+        feed.skill_gap_summary = summarize_items(feed.items)
+    except Exception:  # noqa: BLE001 - additive, never fatal
+        log.exception("feed skill-gap summary failed")
 
     return feed

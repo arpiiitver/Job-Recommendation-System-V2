@@ -13,7 +13,10 @@ salary -> 70, education (no bar) -> 100, skills (job lists none) -> 80.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+from rapidfuzz import fuzz
 
 from app.models.enums import ExperienceLevel, ProficiencyLevel
 
@@ -174,6 +177,12 @@ class ComponentInputs:
     job_family: str | None = None
     family_graph_distance: int | None = None    # 0 = same family, 1 = adjacent, None = unknown
     seeker_interest_skills: set[str] = field(default_factory=set)
+    # Career direction (role/domain switchers): free-text target roles or
+    # domains the seeker typed ("Data Scientist", "Fintech"), independent of
+    # the resume.  Matched against the job title / skills / text below.
+    seeker_target_roles: list[str] = field(default_factory=list)
+    job_title: str | None = None
+    job_text: str | None = None                 # lowercase title+family+description excerpt
 
 
 @dataclass
@@ -395,14 +404,71 @@ def salary_match(inputs: ComponentInputs) -> float:
     return _clamp(60.0 + 40.0 * (overlap / span))
 
 
+# Target-role alignment tiers (career direction).  A role the seeker typed
+# that matches the job title is as strong as a target-family hit; a domain
+# that only appears in the job text is a softer, still-above-neutral signal.
+ROLE_TITLE_STRONG = 100.0   # token_set_ratio >= 90 ("Data Scientist" ⊂ "Senior Data Scientist")
+ROLE_TITLE_CLOSE = 85.0     # token_set_ratio >= 75 ("Data Science" ~ "Data Scientist")
+ROLE_SKILL_HIT = 80.0       # the "role" is really a skill the job requires
+ROLE_DOMAIN_HIT = 75.0      # whole-phrase hit in title/description ("fintech")
+
+
+def role_alignment(inputs: ComponentInputs) -> tuple[float, str] | None:
+    """Best (score, matched_role) over the seeker's target roles, or None.
+
+    Deterministic, explainable string matching — no embeddings, no LLM — so
+    the interest component stays reproducible and its reason can be shown.
+    """
+    if not inputs.seeker_target_roles:
+        return None
+    title = (inputs.job_title or "").lower().strip()
+    text = (inputs.job_text or "").lower()
+    job_skill_names = {js.name.lower().strip() for js in inputs.job_skills}
+
+    best: tuple[float, str] | None = None
+    for raw in inputs.seeker_target_roles:
+        role = str(raw or "").lower().strip()
+        if len(role) < 2:
+            continue
+        score = 0.0
+        if title:
+            ratio = fuzz.token_set_ratio(role, title)
+            if ratio >= 90:
+                score = ROLE_TITLE_STRONG
+            elif ratio >= 75:
+                score = ROLE_TITLE_CLOSE
+        if score < ROLE_SKILL_HIT and role in job_skill_names:
+            score = ROLE_SKILL_HIT
+        if score < ROLE_DOMAIN_HIT and text and re.search(
+            rf"(?<![a-z0-9]){re.escape(role)}(?![a-z0-9])", text
+        ):
+            score = ROLE_DOMAIN_HIT
+        if score > 0 and (best is None or score > best[0]):
+            best = (score, str(raw).strip())
+    return best
+
+
 def interest_match(inputs: ComponentInputs) -> float:
-    """Family/interest alignment (plan §6)."""
+    """Family / target-role / interest alignment (plan §6).
+
+    Signals are combined with ``max`` so an explicit career direction can only
+    *raise* a job above neutral — a seeker who types target roles is never
+    penalised on jobs that simply don't mention them.
+    """
+    candidates: list[float] = []
+
     if inputs.seeker_target_family and inputs.job_family:
         if inputs.seeker_target_family.strip().lower() == inputs.job_family.strip().lower():
-            return 100.0
-        if inputs.family_graph_distance is not None:
-            if inputs.family_graph_distance <= 1:
-                return 70.0
+            candidates.append(100.0)
+        elif inputs.family_graph_distance is not None and inputs.family_graph_distance <= 1:
+            candidates.append(70.0)
+
+    role = role_alignment(inputs)
+    if role is not None:
+        candidates.append(role[0])
+
+    if candidates:
+        return max(candidates)
 
     if inputs.seeker_interest_skills and inputs.job_skills:
         interest = {s.lower().strip() for s in inputs.seeker_interest_skills}
@@ -411,9 +477,6 @@ def interest_match(inputs: ComponentInputs) -> float:
         if union:
             return _clamp(100.0 * len(interest & job_names) / len(union))
 
-    if inputs.seeker_target_family and inputs.job_family:
-        # related but unknown distance: neutral
-        return NEUTRAL_INTEREST
     return NEUTRAL_INTEREST
 
 
